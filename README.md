@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MCD Medical Network - شبكة الرعاية الطبية</title>
+<style>
+:root { --mcd-red: #c8102e; --mcd-yellow: #ffc72c; }
+body { font-family: 'Segoe UI', Tahoma, sans-serif; margin:0; background:#f9f9f9; direction: rtl; }
+header { background: var(--mcd-red); padding: 20px; text-align: center; color: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+.ai-box { background: white; width: 90%; max-width: 800px; margin: 20px auto; padding: 20px; border-radius: 12px; border-right: 8px solid var(--mcd-yellow); box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+.search-row { display: flex; gap: 10px; }
+.search-row input { flex: 1; padding: 12px; border-radius: 8px; border: 1px solid #ddd; outline: none; }
+.search-row button { padding: 12px 25px; background: var(--mcd-red); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+.buttons { margin: 15px 0; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.buttons button { padding: 12px 20px; font-weight: bold; background: #fff; border: 1px solid #ddd; border-radius: 50px; cursor: pointer; transition: 0.3s; }
+.buttons button.active { background: var(--mcd-yellow); border-color: var(--mcd-yellow); transform: scale(1.05); }
+.filters { background: white; padding: 15px; margin: 0 auto 20px; width: 90%; max-width: 800px; border-radius: 12px; display: none; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+.filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+select { padding: 10px; border-radius: 8px; border: 1px solid #ddd; width: 100%; background: #fff; }
+#results { width: 90%; max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; padding-bottom: 50px; }
+.card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-top: 6px solid var(--mcd-red); position: relative; }
+.card h3 { margin: 0 0 10px; color: var(--mcd-red); font-size: 18px; }
+.class-tag { background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; position: absolute; left: 15px; top: 15px; }
+.card p { margin: 8px 0; font-size: 14px; color: #444; }
+.btn-call { display:block; margin-top:10px; text-align:center; background:#28a745; color:white; padding:10px; border-radius:8px; text-decoration:none; font-weight:bold; }
+.btn-map { display:block; margin-top:5px; text-align:center; background:#007bff; color:white; padding:10px; border-radius:8px; text-decoration:none; font-weight:bold; }
+.status-msg { text-align: center; padding: 50px; color: #777; grid-column: 1/-1; }
+</style>
+</head>
+<body>
+
+<header><h1>دليل الشبكة الطبية MCD</h1></header>
+
+<div class="ai-box">
+    <div class="search-row">
+        <input type="text" id="userInput" placeholder="ابحث بالاسم، التخصص أو المنطقة..." oninput="freeSearch()" />
+        <button onclick="freeSearch()">بحث</button>
+    </div>
+</div>
+
+<div class="buttons">
+    <button onclick="setTab('العيادات', this)">عيادات ومستشفيات</button>
+    <button onclick="setTab('الصيدليات', this)">صيدليات</button>
+    <button onclick="setTab('معامل التحاليل', this)">معامل تحاليل</button>
+    <button onclick="setTab('مراكز الأشعة', this)">مراكز أشعة</button>
+</div>
+
+<div class="filters" id="filtersDiv">
+    <div class="filters-grid">
+        <select id="f-class" onchange="applyFilters()"><option value="">-- الفئة --</option></select>
+        <select id="f-spec" onchange="applyFilters()"><option value="">-- التخصص --</option></select>
+        <select id="f-prov" onchange="onProvChange()"><option value="">-- المحافظة --</option></select>
+        <select id="f-area" onchange="applyFilters()"><option value="">-- المنطقة --</option></select>
+    </div>
+</div>
+
+<div id="results"><p class="status-msg">اختر قسماً من الأعلى لعرض البيانات...</p></div>
+
+<script>
+// تم تحديث الـ ID ليعمل مع الشيت الخاص بك مباشرة
+const SHEET_ID = '1vQxN5MBEUuS0ekIhjpIZmX67soIFFpykCQZJN_ZSuk71lWWTuZZamex8BOPz7nRdGFWPiem6wnJm0ji';
+
+let fullData = [];
+
+async function fetchData(sheetName) {
+    // نستخدم صيغة CSV لضمان استقرار البيانات
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+    try {
+        const response = await fetch(url);
+        const text = await response.text();
+        const rows = text.split('\n').slice(1);
+        return rows.map(row => {
+            // معالجة بسيطة لتنظيف البيانات من علامات التنصيص
+            const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, ''));
+            return {
+                type: cols[0], class: cols[1], spec: cols[2], name: cols[3],
+                prov: cols[4], area: cols[5], addr: cols[6], phone: cols[7], map: cols[8]
+            };
+        }).filter(item => item.name);
+    } catch (e) {
+        console.error("خطأ:", e);
+        return [];
+    }
+}
+
+async function setTab(sheetName, btn) {
+    document.getElementById('results').innerHTML = '<p class="status-msg">جاري تحميل البيانات...</p>';
+    document.querySelectorAll('.buttons button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    
+    fullData = await fetchData(sheetName);
+    document.getElementById('filtersDiv').style.display = 'block';
+
+    updateSelect('f-class', [...new Set(fullData.map(i => i.class))]);
+    updateSelect('f-spec', [...new Set(fullData.map(i => i.spec))]);
+    updateSelect('f-prov', [...new Set(fullData.map(i => i.prov))]);
+    
+    render(fullData);
+}
+
+function updateSelect(id, list) {
+    const el = document.getElementById(id);
+    const firstOption = el.options[0].text;
+    el.innerHTML = `<option value="">${firstOption}</option>` + 
+        list.filter(x => x).sort().map(i => `<option value="${i}">${i}</option>`).join('');
+}
+
+function onProvChange() {
+    const p = document.getElementById('f-prov').value;
+    const filteredByProv = fullData.filter(i => !p || i.prov === p);
+    updateSelect('f-area', [...new Set(filteredByProv.map(i => i.area))]);
+    applyFilters();
+}
+
+function applyFilters() {
+    const cls = document.getElementById('f-class').value;
+    const spc = document.getElementById('f-spec').value;
+    const prv = document.getElementById('f-prov').value;
+    const are = document.getElementById('f-area').value;
+
+    const res = fullData.filter(i => {
+        return (!cls || i.class === cls) &&
+               (!spc || i.spec === spc) &&
+               (!prv || i.prov === prv) &&
+               (!are || i.area === are);
+    });
+    render(res);
+}
+
+function render(list) {
+    const div = document.getElementById('results');
+    if(!list.length) { div.innerHTML = '<p class="status-msg">لا توجد بيانات متاحة حالياً في هذا القسم.</p>'; return; }
+    
+    div.innerHTML = list.map(i => `
+        <div class="card">
+            ${i.class ? `<span class="class-tag">فئة ${i.class}</span>` : ''}
+            <h3>${i.name}</h3>
+            <p><b>التخصص:</b> ${i.spec || 'عام'}</p>
+            <p><b>العنوان:</b> ${i.prov || ''} - ${i.area || ''} <br> ${i.addr || ''}</p>
+            ${i.phone ? `<a href="tel:${i.phone}" class="btn-call">📞 اتصال: ${i.phone}</a>` : ''}
+            ${i.map ? `<a href="${i.map}" target="_blank" class="btn-map">📍 الخريطة</a>` : ''}
+        </div>
+    `).join('');
+}
+
+function freeSearch() {
+    const v = document.getElementById('userInput').value.toLowerCase();
+    const res = fullData.filter(i => 
+        (i.name && i.name.toLowerCase().includes(v)) || 
+        (i.area && i.area.toLowerCase().includes(v))
+    );
+    render(res);
+}
+</script>
+</body>
+</html>
